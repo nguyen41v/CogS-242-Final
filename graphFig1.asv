@@ -57,7 +57,7 @@ ylabel('Error rate, ER');
 f2 = figure;
 plot(difficulty, learning_rate, difficulty, learning_rate2);
 title('Fig. 1C of paper; learning rate as a function of difficulty')
-xlabel('Difficulty')
+xlabel('DDiffic')
 ylabel('Learning rate, dER/dB');
 
 % Fig 1D
