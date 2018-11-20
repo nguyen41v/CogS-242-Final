@@ -48,7 +48,7 @@ def graphFig1():
     ax2.plot(difficulty, error_rate,'b-', lw=2, alpha=1, label='Before learning')
     ax2.plot(difficulty, error_rate_f, 'r-', lw=2, alpha=1, label='After learning')
     ax2.set_title('Fig. 1B of paper; error rate as a function of difficulty')
-    ax2.set_xlabel('Difficulty')
+    ax2.set_xlabel('Difficulty,  ∆')
     ax2.set_ylabel('Error rate, ER')
     ax2.set_xlim([0, max_diff])
     ax2.set_ylim(bottom=0)
@@ -57,8 +57,8 @@ def graphFig1():
     ax3.plot(difficulty, learning_rate, 'b-', lw=2, alpha=1, label='Before learning')
     ax3.plot(difficulty, learning_rate_f, 'r-', lw=2, alpha=1, label='After learning')
     ax3.set_title('Fig. 1C of paper; learning rate as a function of difficulty')
-    ax3.set_xlabel('Difficulty')
-    ax3.set_ylabel('Learning rate, dER/dB')
+    ax3.set_xlabel('Difficulty,  ∆')
+    ax3.set_ylabel('Learning rate, ∂ER/∂β')
     ax3.set_xlim([0, max_diff])
     ax3.set_ylim(bottom=0)
 
@@ -67,7 +67,7 @@ def graphFig1():
     ax4.plot(error_rate_f, learning_rate_f, 'r-', lw=2, alpha=1, label='After learning')
     ax4.set_title('Fig. 1D of paper; learning rate as a function of error rate')
     ax4.set_xlabel('Error rate, ER')
-    ax4.set_ylabel('Learning rate, dER/dB')
+    ax4.set_ylabel('Learning rate, ∂ER/∂β')
     ax4.set_xlim([0, 0.5])
     ax4.set_ylim(bottom=0)
 
