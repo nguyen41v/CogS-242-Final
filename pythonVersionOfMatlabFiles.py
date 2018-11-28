@@ -1,13 +1,6 @@
 from __future__ import print_function
 
 
-from IPython import display
-from matplotlib import cm
-from matplotlib import gridspec
-import pandas as pd
-from sklearn import metrics
-import tensorflow as tf
-from tensorflow.python.data import Dataset
 import matplotlib.pyplot as plt
 from scipy.stats import norm
 import numpy as np
@@ -202,7 +195,7 @@ def angle_between(v1, v2):
     return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
 
 
-def run_sims_for_error_rate(e, error_rate, w, my_lambda, num_of_sims, writer):
+def run_sims_for_error_rate(e, error_rate, w, my_lambda, num_of_sims, num_of_tests=1000):
     """
     Trains a Perceptron model at a fixed error rate and
     writes the F1 score of the model with each training stimulus
@@ -212,11 +205,12 @@ def run_sims_for_error_rate(e, error_rate, w, my_lambda, num_of_sims, writer):
     :param numpy.ndarray w: initial weight vector of untrained Perceptron
     :param float my_lambda: arbitrary value to keep the difficulty constant
     :param int num_of_sims: number of training simulations to do on w
-    :param writer: csv writer to append data to
+    :param int num_of_tests: number of simulations to do for F1 score
     :returns: a numpy.ndarray of the trained Perceptron weight vector
     """
-    row = [error_rate]
+    row = [round(error_rate, 2)]
     row.append(test_F1(e, w, num_of_sims))
+    accuracy = 0
     for i in range(num_of_sims):
         my_theta = angle_between(w, e)
         x = np.random.normal(0, 1, 100)
@@ -226,21 +220,27 @@ def run_sims_for_error_rate(e, error_rate, w, my_lambda, num_of_sims, writer):
         if real > 0:
             t = 1
 
-        my_delta = norm.ppf(error_rate) * my_lambda * math.tan(my_theta)
-
-        h = np.linalg.norm(w) * (2 * t - 1) * my_delta * math.cos(my_theta) + np.linalg.norm(w) * np.dot(
+        my_delta = abs(norm.ppf(error_rate) * my_lambda * math.tan(my_theta))
+        signal = np.linalg.norm(w) * (2 * t - 1) * my_delta * math.cos(my_theta)
+        noise = np.linalg.norm(w) * np.dot(
             ((w / np.linalg.norm(w)) - e * math.cos(my_theta)), x)
+        h = signal + noise
 
         y = 0
         if h > 0:
             y = 1
+        if y == t:
+            accuracy += 1
 
         w = w + (t - y) * x
-        row.append(test_F1(e, w, num_of_sims))
-    writer.writerow(row)
-    return w
+        row.append(test_F1(e, w, num_of_tests))
+    row.insert(0, 1 - accuracy/num_of_sims)
+    print(abs(error_rate - (1 - accuracy/num_of_sims)))
+    return row
 
-
+# did not check for division by 0; should not matter since
+# data should be large enough so that there is no division
+# by 0
 def test_accuracy(e, w, num_of_tests):
     """Returns the accuracy of Perceptron w
 
@@ -272,7 +272,7 @@ def test_accuracy(e, w, num_of_tests):
 
 
 def test_precision(e, w, num_of_tests):
-    """Returns the accuracy of Perceptron w
+    """Returns the precision of Perceptron w
 
     https://towardsdatascience.com/accuracy-precision-recall-or-f1-331fb37c5cb9
     precision = (true positives) /
@@ -306,6 +306,43 @@ def test_precision(e, w, num_of_tests):
     return true_positives/predicted_positives
 
 
+def test_absolute_precision(e, w, num_of_tests):
+    """Returns the absolute precision of Perceptron w
+
+    Absolute precision is measured as the inverse of the standard
+    deviation of the noise.
+
+    :param numpy.ndarray e: normalized weight vector of Teacher Perceptron
+    :param numpy.ndarray w: weight vector of Perceptron
+    :param int num_of_tests: number of tests to simulate
+    :returns: a float of precision, [0, 1]
+    """
+    min = 100
+    max = 0
+    noises = []
+    for k in range(num_of_tests):
+        x = np.random.normal(0, 1, 100)
+
+        real = np.dot(e, x)
+        t = 0
+        if real > 0:
+            t = 1
+        my_theta = angle_between(unit_vector(w), unit_vector(e))
+        noise = np.linalg.norm(w) * np.dot(
+            ((w / np.linalg.norm(w)) - e * math.cos(my_theta)), x)
+        noises.append(noise)
+        h = np.dot(w, x)
+        y = 0
+        if h > 0:
+            y = 1
+        h = abs(h)
+        if h > max:
+            max = h
+        if h < min:
+            min = h
+    return 1/np.std(np.array(noises))
+
+
 def test_recall(e, w, num_of_tests):
     """Returns the recall of Perceptron w
 
@@ -322,7 +359,6 @@ def test_recall(e, w, num_of_tests):
     actual_positives = 0
     for k in range(num_of_tests):
         x = np.random.normal(0, 1, 100)
-
         real = np.dot(e, x)
         t = 0
         if real > 0:
@@ -357,7 +393,7 @@ def test_F1(e, w, num_of_tests):
 
 
 def fixed_training_error_perceptron(filename='data.csv', min_error_rate=0.01, max_error_rate=0.5,
-                                    steps=0.01, num_of_trials=100, num_of_sims=1000):
+                                    steps=0.01, num_of_trials=100, num_of_sims=1000, num_of_tests=1000):
     """Generates training data for a Perceptron trained at a fixed error rate.
 
     The results are written in a csv format to filename.
@@ -369,24 +405,93 @@ def fixed_training_error_perceptron(filename='data.csv', min_error_rate=0.01, ma
     :param float steps: the size of steps between different error rates
     :param int num_of_trials: number of untrained Perceptrons to train per error rate
     :param int num_of_sims: number of training simulations to do per untrained Perceptron
+    :param int num_of_tests: number of tests to do to see the untrained Perceptron's performance
     """
-
-    # generate weight vector of Teacher Perceptron
-    e = unit_vector(np.random.normal(0, 1, 100))
-    current_error_rate = max_error_rate
-
     with open(filename, 'a', newline='') as csvfile:
         writer = csv.writer(csvfile)
-        while current_error_rate >= min_error_rate:
-            for o in range(num_of_trials):
+        for o in range(num_of_trials):
+            current_error_rate = min_error_rate
+            while current_error_rate <= max_error_rate + steps/2:
+                # generate weight vector of Teacher Perceptron
+                e = unit_vector(np.random.normal(0, 1, 100))
                 w = np.random.normal(0, 1, 100)
-                # while math.acos((np.dot(w, e)) / (np.linalg.norm(w) * np.linalg.norm(e))) > 1.6 * math.pi:
-                #     w = np.random.normal(0, 1, 100)
-                my_lambda = np.linalg.norm(np.dot(e, np.random.normal(0, 1, 100)))/(norm.ppf(current_error_rate) * math.tan(angle_between(w, e)))
-                run_sims_for_error_rate(e, current_error_rate, w, my_lambda, num_of_sims, writer)
+                # keep tan(theta) and cos(theta) positive; think this was the constraint in the paper (<1.6 radians)
+                while angle_between(unit_vector(w), e) > math.pi/2:
+                    w = np.random.normal(0, 1, 100)
+                my_lambda = 1
+                writer.writerow(run_sims_for_error_rate(e, current_error_rate, w, my_lambda, num_of_sims, num_of_tests=num_of_tests))
                 print('Trial %d of %d for error rate of %f has been completed'%(o + 1, num_of_trials, current_error_rate))
-            current_error_rate -= steps
+                current_error_rate += steps
+
+
+def fixed_training_error_perceptron2(filename='data.csv', min_error_rate=0.01, max_error_rate=0.5,
+                                    steps=0.01, num_of_trials=100, num_of_sims=1000, num_of_tests=1000):
+    """Generates training data for a Perceptron trained at a fixed error rate.
+
+    The results are written in a csv format to filename.
+    The untrained Perceptron is randomly generated every trial.
+    Same as other function, except it goes from max to min error rate
+
+    :param string filename: name/path of file to save test data to
+    :param float min_error_rate: minimum error rate to check (0, 0.5]
+    :param float max_error_rate: maximum error rate to check (0, 0.5]
+    :param float steps: the size of steps between different error rates
+    :param int num_of_trials: number of untrained Perceptrons to train per error rate
+    :param int num_of_sims: number of training simulations to do per untrained Perceptron
+    :param int num_of_tests: number of tests to do to see the untrained Perceptron's performance
+    """
+    with open(filename, 'a', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        for o in range(num_of_trials):
+            current_error_rate = max_error_rate
+            while current_error_rate >= min_error_rate - steps/2:
+                # generate weight vector of Teacher Perceptron
+                e = unit_vector(np.random.normal(0, 1, 100))
+                w = np.random.normal(0, 1, 100)
+                # keep tan(theta) and cos(theta) positive; think this was the constraint in the paper (<1.6 radians)
+                while angle_between(unit_vector(w), e) > math.pi/2:
+                    w = np.random.normal(0, 1, 100)
+                my_lambda = 1
+                writer.writerow(run_sims_for_error_rate(e, current_error_rate, w, my_lambda, num_of_sims, num_of_tests=num_of_tests))
+                print('Trial %d of %d for error rate of %f has been completed'%(o + 1, num_of_trials, current_error_rate))
+                current_error_rate -= steps
+
+
+def calculate_stats(filein='F1analysis.csv', fileout_averages='averages.csv', fileout_stds='stds.csv', data_size=100):
+    """Writes the average and std of csv data into another csv file
+
+    Input file should be organized in that the rows are trials and the
+    columns are error rates, with each cell being the F1 score (or any
+    other measure). The columns should be sorted so that all occurrences
+    (trials) of error rate x are all next to each other. Each error rate
+    should have the same number of occurrences
+
+    :param string fileout_stds: name of csv file to write standard deviations to
+    :param string filein: name of csv file with data
+    :param fileout_averages: name of csv file to write averages to
+    :param data_size: number of trials/occurances of every error rate
+    """
+    with open(fileout_averages, 'a', newline='') as csvfile1:
+        avg_writer = csv.writer(csvfile1)
+        with open(fileout_stds, 'a', newline='') as csvfile2:
+            std_writer = csv.writer(csvfile2)
+            with open(filein, 'r', newline='') as csvfile3:
+                reader = csv.reader(csvfile3)
+                for row in reader:
+                    average = []
+                    std = []
+                    for i in range(len(row)//data_size):
+                        error_rate_data = np.array(row[i * data_size : (i + 1) * data_size]).astype(np.float)
+                        average.append(np.average(error_rate_data))
+                        std.append(np.std(error_rate_data))
+                        print(np.average(error_rate_data), np.std(error_rate_data))
+                    avg_writer.writerow(average)
+                    std_writer.writerow(std)
+
+
 
 
 if __name__ == '__main__':
-    fixed_training_error_perceptron(filename='data1.csv')
+    graph_fig1()
+    plt.show()
+    fixed_training_error_perceptron2(filename='test1414.csv', steps=0.01, num_of_trials=10000, min_error_rate=0.01, max_error_rate=0.5, num_of_sims=1000)
